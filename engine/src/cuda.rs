@@ -44,8 +44,10 @@ pub fn run(input_dir: &Path, output_dir: &Path, _adapter: usize) -> Result<()> {
     let module = ctx.load_module(Ptx::from_src(PTX)).map_err(|e| anyhow!("ptx load: {e:?}"))?;
     let kern = module.load_function("groupby").map_err(|e| anyhow!("groupby load: {e:?}"))?;
 
-    let mut dep_dev = stream.alloc_zeros::<u32>(n_acct).map_err(|e| anyhow!("alloc: {e:?}"))?;
-    let mut wd_dev = stream.alloc_zeros::<u32>(n_acct).map_err(|e| anyhow!("alloc: {e:?}"))?;
+    // deposits/withdrawals are u64: CUDA has native 64-bit atomicAdd, so
+    // unlike the wgpu tier this needs no hi/lo split (see kernels/groupby.cu).
+    let mut dep_dev = stream.alloc_zeros::<u64>(n_acct).map_err(|e| anyhow!("alloc: {e:?}"))?;
+    let mut wd_dev = stream.alloc_zeros::<u64>(n_acct).map_err(|e| anyhow!("alloc: {e:?}"))?;
     let mut cnt_dev = stream.alloc_zeros::<u32>(n_acct).map_err(|e| anyhow!("alloc: {e:?}"))?;
 
     let t0 = Instant::now();
@@ -106,7 +108,7 @@ pub fn run(input_dir: &Path, output_dir: &Path, _adapter: usize) -> Result<()> {
     producer.join().map_err(|_| anyhow!("producer panicked"))?;
     let n = total.load(Ordering::Relaxed);
     crate::key::gate(n as u64).map_err(|e| anyhow!(e))?;
-    println!("cuda: {} threads, read+dispatch {} rows in {:.2}s", n_threads, n, t0.elapsed().as_secs_f64());
+    eprintln!("cuda: {} threads, read+dispatch {} rows in {:.2}s", n_threads, n, t0.elapsed().as_secs_f64());
 
     let deposits = stream.memcpy_dtov(&dep_dev).map_err(|e| anyhow!("dtoh: {e:?}"))?;
     let withdrawals = stream.memcpy_dtov(&wd_dev).map_err(|e| anyhow!("dtoh: {e:?}"))?;
@@ -122,13 +124,16 @@ pub fn run(input_dir: &Path, output_dir: &Path, _adapter: usize) -> Result<()> {
         let d = deposits[i] as i64;
         let w = withdrawals[i] as i64;
         let c = counts[i] as i64;
+        // deposits/withdrawals are already u64 off the device (see the
+        // alloc above); `as i64` here is just the same narrowing every
+        // other tier does for money that comfortably fits i64::MAX.
         let e = starting[i] + d - w;
         writeln!(f, "{},{}", i, e)?;
         writeln!(g, "{},{},{},{},{}", i, d, w, c, e)?;
         td += d; tw += w; tc += c; te += e;
     }
     writeln!(g, "-1,{},{},{},{}", td, tw, tc, te)?;
-    println!("cuda: wrote outputs in {:.2}s", t2.elapsed().as_secs_f64());
+    eprintln!("cuda: wrote outputs in {:.2}s", t2.elapsed().as_secs_f64());
     Ok(())
 }
 

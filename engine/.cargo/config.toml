@@ -1,0 +1,15 @@
+# Strip the build host's identity out of panic messages and debug info.
+# Third-party crate source paths land under CARGO_HOME (~/.cargo on any
+# standard rustup install) and get embedded verbatim via file!()/panic
+# locations; on the build host that path leaked the account name into the
+# shipped binary (189 occurrences of /home/algolotl/.cargo, found 2026-09-13).
+# This remap is host-independent, since ~/.cargo is the same convention
+# everywhere, so it is safe to commit.
+#
+# This does NOT remap the crate's own source paths, since those live under
+# whatever directory the crate is checked out to and vary per build host;
+# that half needs an explicit --remap-path-prefix=<build dir>=/build passed
+# at build time on top of this file, e.g.:
+#   RUSTFLAGS="--remap-path-prefix=$PWD=/build" cargo build --release
+[build]
+rustflags = ["--remap-path-prefix=/home/algolotl/.cargo=/cargo"]

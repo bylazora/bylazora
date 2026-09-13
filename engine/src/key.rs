@@ -19,7 +19,7 @@ pub const FREE_ROWS: u64 = 10_000_000;
 /// The production signing key's public half. Not a secret: publishing it is
 /// the point of an offline-verified licence. Used for real verification only
 /// outside test builds; see verifying_key_bytes().
-const PUBLIC_KEY_HEX: &str = "c3618afe304b557633684b2cd50c796f3b4763d9f0e62c6031abeaa1d6273897";
+const PUBLIC_KEY_HEX: &str = "2f05021850c3322c875ed35d88ed6e6724bfdcaaca0c89ecfe5fb026de0b8e35";
 const KEY_PREFIX: &str = "bylazora:pro:v2:";
 const LICENCE_URL: &str = "https://bylazora.com/licence.html";
 
@@ -78,18 +78,23 @@ pub struct License {
 
 impl License {
     /// Parse and verify a key of the form bylazora-v2-<org>-<expiryYYYYMMDD>-<sig>.
+    /// <org> may itself contain hyphens (keygen and the portal both allow
+    /// them), so this can't split left-to-right into a fixed field count;
+    /// it strips the fixed prefix, then peels sig and expiry off the RIGHT
+    /// (both fixed-width), leaving whatever remains, hyphens included, as
+    /// the org.
     pub fn parse(key: &str) -> Result<License, String> {
-        let parts: Vec<&str> = key.split('-').collect();
-        if parts.len() != 5 || parts[0] != "bylazora" || parts[1] != "v2" {
-            return Err("unknown key format".into());
-        }
-        let org = parts[2];
+        let rest = key.strip_prefix("bylazora-v2-").ok_or("unknown key format")?;
+        let mut fields = rest.rsplitn(3, '-');
+        let sig_str = fields.next().ok_or("unknown key format")?;
+        let expiry = fields.next().ok_or("unknown key format")?;
+        let org = fields.next().ok_or("unknown key format")?;
+
         if org.is_empty() || org.len() > 32
             || !org.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         {
             return Err("invalid organisation in key".into());
         }
-        let expiry = parts[3];
         if expiry.len() != 8 || !expiry.chars().all(|c| c.is_ascii_digit()) {
             return Err("invalid expiry in key".into());
         }
@@ -100,7 +105,7 @@ impl License {
             return Err("invalid expiry in key".into());
         }
         let expiry_days = days_from_civil(y, m, d) as u64;
-        let sig = decode_hex(parts[4]).ok_or("invalid key signature")?;
+        let sig = decode_hex(sig_str).ok_or("invalid key signature")?;
         if sig.len() != 64 { return Err("invalid key signature".into()); }
         let vk = VerifyingKey::from_bytes(&verifying_key_bytes()).expect("valid public key");
         let signature = Signature::from_slice(&sig).map_err(|_| "invalid key signature".to_string())?;
@@ -145,7 +150,7 @@ pub fn gate(rows: u64) -> Result<(), String> {
     let key = load_key();
     if let Some(k) = key.as_deref() {
         if let Ok(lic) = License::parse(k) {
-            println!("licence: bylazora v2 {:?}, licensed to {} until {}", lic.tier, lic.org, lic.expiry);
+            eprintln!("licence: bylazora v2 {:?}, licensed to {} until {}", lic.tier, lic.org, lic.expiry);
         }
     }
     gate_with(rows, key.as_deref(), now_days())
@@ -249,6 +254,16 @@ mod tests {
     #[test]
     fn civil_to_days_matches_known_date() {
         assert_eq!(days_from_civil(2027, 12, 31), EXPIRY_DAYS as i64);
+    }
+
+    #[test]
+    fn hyphenated_org_parses_correctly() {
+        // keygen and the portal both allow '-' in an org slug (e.g. an
+        // auto-generated "acme-corp" from "Acme Corp Pty Ltd"); parsing
+        // must not mistake a hyphen inside the org for a field separator.
+        let key = test_key("acme-corp", "20271231");
+        let lic = License::parse(&key).expect("hyphenated org should parse");
+        assert_eq!(lic.org, "acme-corp");
     }
 
     #[test]

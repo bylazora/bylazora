@@ -3,9 +3,20 @@
 mod mcp;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
-use bylazora::{cpu, cuda, db2, gpu, key, validator};
+use clap::{Parser, Subcommand, ValueEnum};
+#[cfg(feature = "cuda")]
+use bylazora::cuda;
+use bylazora::{copybook, cpu, db2, gpu, key, validator};
 use std::path::PathBuf;
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum Backend {
+    Cpu,
+    /// vendor-neutral wgpu, any adapter
+    Gpu,
+    /// NVIDIA only; needs a build with --features cuda
+    Cuda,
+}
 
 #[derive(Parser)]
 #[command(name = "bylazora-core", version = "0.4.1")]
@@ -27,9 +38,8 @@ enum Cmd {
     Bench {
         input_dir: PathBuf,
         output_dir: PathBuf,
-        /// cpu (default), gpu (vendor-neutral wgpu, any adapter), or cuda (NVIDIA)
-        #[arg(long, default_value = "cpu")]
-        backend: String,
+        #[arg(long, value_enum, default_value = "cpu")]
+        backend: Backend,
         /// wgpu adapter index for the gpu backend
         #[arg(long, default_value_t = 0)]
         adapter: usize,
@@ -45,6 +55,22 @@ enum Cmd {
     Db2 {
         #[command(subcommand)]
         action: Db2Action,
+    },
+    /// Parse a COBOL copybook into its field schema
+    Copybook {
+        #[command(subcommand)]
+        action: CopybookAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum CopybookAction {
+    /// Parse a copybook source file and write its field schema as JSON
+    Parse {
+        #[arg(long)]
+        src: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
     },
 }
 
@@ -99,10 +125,15 @@ fn main() -> Result<()> {
             }
         }
         Cmd::Bench { input_dir, output_dir, backend, adapter } => {
-            match backend.as_str() {
-                "gpu" => gpu::run(&input_dir, &output_dir, adapter),
-                "cuda" => cuda::run(&input_dir, &output_dir, adapter),
-                _ => cpu::run(&input_dir, &output_dir),
+            match backend {
+                Backend::Cpu => cpu::run(&input_dir, &output_dir),
+                Backend::Gpu => gpu::run(&input_dir, &output_dir, adapter),
+                #[cfg(feature = "cuda")]
+                Backend::Cuda => cuda::run(&input_dir, &output_dir, adapter),
+                #[cfg(not(feature = "cuda"))]
+                Backend::Cuda => Err(anyhow::anyhow!(
+                    "cuda backend not available: this binary was built without --features cuda (requires the CUDA toolkit)"
+                )),
             }
         }
         Cmd::Mcp => mcp::run(),
@@ -125,6 +156,16 @@ fn main() -> Result<()> {
                 let del_text = std::fs::read_to_string(&del)?;
                 let rows = db2::import_del(&cols, &del_text, &out).map_err(anyhow::Error::msg)?;
                 println!("imported {rows} rows to {}", out.display());
+                Ok(())
+            }
+        },
+        Cmd::Copybook { action } => match action {
+            CopybookAction::Parse { src, out } => {
+                let text = std::fs::read_to_string(&src)?;
+                let fields = copybook::parse_copybook(&text).map_err(anyhow::Error::msg)?;
+                let schema = copybook::field_schema(&fields);
+                std::fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
+                println!("parsed {} fields to {}", fields.len(), out.display());
                 Ok(())
             }
         },

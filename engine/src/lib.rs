@@ -8,6 +8,7 @@
 // the key, the row count, and the clock.
 pub mod cpu;
 pub mod gpu;
+#[cfg(feature = "cuda")]
 pub mod cuda;
 pub mod key;
 pub mod validator;

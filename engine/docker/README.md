@@ -1,6 +1,6 @@
 # bylazora-core GPU container image
 
-Docker image for the bylazora-core migration engine (core-rs, version 0.3.1),
+Docker image for the bylazora-core migration engine (core-rs, version 0.4.1),
 built around its vendor-neutral wgpu GPU tier.
 
 The engine binary is statically linked except glibc, so the image adds only
@@ -15,27 +15,26 @@ starts from the same layer.
 
 ## Build
 
-Run from this directory (core-rs/docker):
+The Dockerfile needs a binary to COPY in, and the one built-from-source
+binary this project ships is deliverables/sample-migration/engine/bylazora-core,
+so the build context is the repository root, not this directory:
 
 ```
-docker build -t bylazora-core:0.3.1 .
+docker build -t bylazora-core:0.4.1 -f core-rs/docker/Dockerfile .
 ```
 
-The build context is this directory, so it holds only the Dockerfile, this
-README, and the prebuilt binary bylazora-linux-x86_64. That binary is a copy of
-tools/assets/bylazora-linux-x86_64 at version 0.3.1. Refresh it with:
-
-```
-cp ../../tools/assets/bylazora-linux-x86_64 bylazora-linux-x86_64
-```
+There is no separate copy of the binary to keep in sync: the Dockerfile reads
+it directly from deliverables/sample-migration/engine/, which sample/run_all.sh
+also runs as the CI gate, so the image and the tested binary are always the
+same file.
 
 ## Verify the image
 
 ```
-docker run --rm bylazora-core:0.3.1 --version
+docker run --rm bylazora-core:0.4.1 --version
 ```
 
-Expected output: bylazora-core 0.3.1
+Expected output: 0.4.1
 
 ## Run a bench
 
@@ -46,7 +45,7 @@ directory. Mount one data volume for both:
 ```
 docker run --rm \
   -v "$(pwd)/data:/data" \
-  bylazora-core:0.3.1 \
+  bylazora-core:0.4.1 \
   bench /data/in /data/out --backend gpu
 ```
 
@@ -54,8 +53,11 @@ Point /data/in and /data/out at directories inside the mounted volume. The
 container runs as uid 10001 (the bylazora user), so the mounted directory must
 be writable by that uid, for example chown 10001 data.
 
-The --backend flag is cpu (default) or gpu. Use --adapter N to pick a specific
-wgpu adapter; the default is adapter 0.
+The --backend flag is cpu (default), gpu, or cuda. Use --adapter N to pick a
+specific wgpu adapter for the gpu backend; the default is adapter 0. This
+image is built without the cuda cargo feature (see core-rs/Cargo.toml), so
+the cuda backend is unavailable inside the container; use the gpu backend,
+which runs on any Vulkan adapter including NVIDIA hardware.
 
 ## GPU access
 
@@ -64,7 +66,7 @@ Pass the host GPU through with the NVIDIA Container Toolkit:
 ```
 docker run --rm --gpus all \
   -v "$(pwd)/data:/data" \
-  bylazora-core:0.3.1 \
+  bylazora-core:0.4.1 \
   bench /data/in /data/out --backend gpu
 ```
 
@@ -75,13 +77,15 @@ falls back to lavapipe, the Mesa software Vulkan driver:
 ```
 docker run --rm \
   -v "$(pwd)/data:/data" \
-  bylazora-core:0.3.1 \
+  bylazora-core:0.4.1 \
   bench /data/in /data/out --backend gpu
 ```
 
 The first line of GPU output names the selected adapter, for example
 adapter[0]: NVIDIA GeForce RTX 3080 (Vulkan) for hardware, or
-adapter[0]: llvmpipe (LLVM ...) (Vulkan) for the software fallback.
+adapter[0]: llvmpipe (LLVM ...) (Vulkan) for the software fallback. That line
+is written to stderr, not stdout, so it does not interfere with anything
+reading the container's stdout.
 
 ## Security posture
 
@@ -98,6 +102,8 @@ the BYLAZORA_KEY environment variable.
 
 ## Reproducibility
 
-The base image digest and the prebuilt binary are both pinned. To rebuild on a
-different base, update the FROM ... @sha256:... line. To refresh the binary,
-copy a new bylazora-linux-x86_64 from tools/assets/.
+The base image digest is pinned; update the FROM ... @sha256:... line to
+rebuild on a different base. The binary comes from a normal engine rebuild
+(cd core-rs && cargo build --release, without --features cuda to match this
+image) copied to deliverables/sample-migration/engine/bylazora-core, the same
+artefact the sample CI gate runs.

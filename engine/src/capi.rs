@@ -36,7 +36,7 @@ unsafe fn cstr_path(p: *const c_char) -> Result<PathBuf, String> {
 
 #[no_mangle]
 pub extern "C" fn bylazora_version() -> *const c_char {
-    b"0.4.0\0".as_ptr().cast()
+    concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr().cast()
 }
 
 fn validate_impl(ref_dir: *const c_char, other_dir: *const c_char) -> Result<i32, String> {
@@ -79,7 +79,10 @@ fn bench_impl(
     match backend.as_str() {
         "cpu" => crate::cpu::run(&input_dir, &output_dir),
         "gpu" => crate::gpu::run(&input_dir, &output_dir, 0),
+        #[cfg(feature = "cuda")]
         "cuda" => crate::cuda::run(&input_dir, &output_dir, 0),
+        #[cfg(not(feature = "cuda"))]
+        "cuda" => return Err("cuda backend not available: this binary was built without --features cuda (requires the CUDA toolkit)".to_string()),
         other => return Err(format!("unknown backend: {other} (expected cpu, gpu, or cuda)")),
     }
     .map_err(|e| format!("{e:#}"))
@@ -146,9 +149,9 @@ mod tests {
     }
 
     #[test]
-    fn version_is_0_4_0() {
+    fn version_matches_the_crate() {
         let s = unsafe { CStr::from_ptr(bylazora_version()) }.to_str().unwrap();
-        assert_eq!(s, "0.4.0");
+        assert_eq!(s, env!("CARGO_PKG_VERSION"));
     }
 
     #[test]

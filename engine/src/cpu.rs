@@ -119,7 +119,7 @@ pub fn run(input_dir: &Path, output_dir: &Path) -> Result<()> {
     }
     writeln!(g, "-1,{},{},{},{}", td, tw, tc, te)?;
     if n == 0 { return Err(anyhow!("no rows parsed")); }
-    println!("cpu: {} threads, read+agg {:.2}s ({} rows), write {:.2}s", n_threads, read_s, n, t2.elapsed().as_secs_f64());
+    eprintln!("cpu: {} threads, read+agg {:.2}s ({} rows), write {:.2}s", n_threads, read_s, n, t2.elapsed().as_secs_f64());
     Ok(())
 }
 #[cfg(test)]

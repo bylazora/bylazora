@@ -23,8 +23,8 @@ extern "C" {
 #define BYLAZORA_ERROR (-1) /* error; errbuf (when given) holds a message */
 
 /*
- * Return the version of this interface. The pointer is static and
- * NUL-terminated and must not be freed by the caller.
+ * Return the engine's version (the crate version, e.g. "0.4.1"). The pointer
+ * is static and NUL-terminated and must not be freed by the caller.
  */
 const char *bylazora_version(void);
 

@@ -13,7 +13,7 @@ anyhow = "1"
 bytemuck = "1"
 clap = { version = "4", features = ["derive"] }
 csv = "1"
-cudarc = { version = "0.14", features = ["cuda-version-from-build-system"] }
+cudarc = { version = "0.14", features = ["cuda-version-from-build-system"], optional = true }
 ed25519-dalek = "2"
 pollster = "0.4"
 rayon = "1"
@@ -22,5 +22,10 @@ serde_json = "1"
 sha2 = "0.10"
 wgpu = "24"
 
+[features]
+default = []
+cuda = ["dep:cudarc"]
+
 [profile.release]
 opt-level = 3
+strip = "symbols"

@@ -11,21 +11,40 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 use wgpu::util::DeviceExt;
 
+// WGSL has no atomic<u64>, so each 64-bit accumulator is a pair of u32
+// atomics (lo, hi). atomicAdd returns the value immediately before this
+// add; since that add is linearised by the hardware, checking whether it
+// crossed the u32 boundary correctly detects the carry regardless of how
+// other threads interleave, so each thread can atomicAdd hi independently
+// without a compare-exchange loop. Individual amounts are still u32 (no
+// single transaction has ever needed more than that); only the per-account
+// running total needed widening, since that is what accumulates without
+// bound across many transactions.
 const SHADER: &str = r#"
 @group(0) @binding(0) var<storage, read> acct: array<i32>;
 @group(0) @binding(1) var<storage, read> amt: array<u32>;
 @group(0) @binding(2) var<storage, read> is_dep: array<u32>;
-@group(0) @binding(3) var<storage, read_write> deposits: array<atomic<u32>>;
-@group(0) @binding(4) var<storage, read_write> withdrawals: array<atomic<u32>>;
-@group(0) @binding(5) var<storage, read_write> counts: array<atomic<u32>>;
+@group(0) @binding(3) var<storage, read_write> deposits_lo: array<atomic<u32>>;
+@group(0) @binding(4) var<storage, read_write> deposits_hi: array<atomic<u32>>;
+@group(0) @binding(5) var<storage, read_write> withdrawals_lo: array<atomic<u32>>;
+@group(0) @binding(6) var<storage, read_write> withdrawals_hi: array<atomic<u32>>;
+@group(0) @binding(7) var<storage, read_write> counts: array<atomic<u32>>;
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.y * 16776960u + gid.x;
     if (i >= arrayLength(&acct)) { return; }
     let a = acct[i];
-    atomicAdd(&deposits[a], is_dep[i] * amt[i]);
-    atomicAdd(&withdrawals[a], (1u - is_dep[i]) * amt[i]);
+    let dep_val = is_dep[i] * amt[i];
+    let old_dep_lo = atomicAdd(&deposits_lo[a], dep_val);
+    if (old_dep_lo > 0xFFFFFFFFu - dep_val) {
+        atomicAdd(&deposits_hi[a], 1u);
+    }
+    let wd_val = (1u - is_dep[i]) * amt[i];
+    let old_wd_lo = atomicAdd(&withdrawals_lo[a], wd_val);
+    if (old_wd_lo > 0xFFFFFFFFu - wd_val) {
+        atomicAdd(&withdrawals_hi[a], 1u);
+    }
     atomicAdd(&counts[a], 1u);
 }
 "#;
@@ -60,9 +79,13 @@ fn read_back(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::Buffer, len
     Ok(out)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn dispatch_chunk(
     device: &wgpu::Device, queue: &wgpu::Queue, pipeline: &wgpu::ComputePipeline,
-    bgl: &wgpu::BindGroupLayout, dep_buf: &wgpu::Buffer, wd_buf: &wgpu::Buffer, cnt_buf: &wgpu::Buffer,
+    bgl: &wgpu::BindGroupLayout,
+    dep_lo_buf: &wgpu::Buffer, dep_hi_buf: &wgpu::Buffer,
+    wd_lo_buf: &wgpu::Buffer, wd_hi_buf: &wgpu::Buffer,
+    cnt_buf: &wgpu::Buffer,
     acct: &[i32], amt: &[u32], is_dep: &[u32],
 ) {
     let acct_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -83,9 +106,11 @@ fn dispatch_chunk(
             wgpu::BindGroupEntry { binding: 0, resource: acct_buf.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: amt_buf.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 2, resource: is_dep_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: dep_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: wd_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: cnt_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 3, resource: dep_lo_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 4, resource: dep_hi_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: wd_lo_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 6, resource: wd_hi_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 7, resource: cnt_buf.as_entire_binding() },
         ],
     });
     let cn = acct.len() as u32;
@@ -120,22 +145,28 @@ pub fn run(input_dir: &Path, output_dir: &Path, adapter_idx: usize) -> Result<()
     let adapters = instance.enumerate_adapters(wgpu::Backends::all());
     if adapters.is_empty() { return Err(anyhow!("no wgpu adapters")); }
     let adapter = adapters.get(adapter_idx).ok_or_else(|| anyhow!("adapter {adapter_idx} out of range"))?;
-    println!("adapter[{}]: {} ({:?})", adapter_idx, adapter.get_info().name, adapter.get_info().backend);
+    eprintln!("adapter[{}]: {} ({:?})", adapter_idx, adapter.get_info().name, adapter.get_info().backend);
     let limits = adapter.limits();
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor { required_limits: limits.clone(), ..Default::default() }, None))?;
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("groupby"), source: wgpu::ShaderSource::Wgsl(SHADER.into()),
     });
+    let ro_entry = |binding: u32| wgpu::BindGroupLayoutEntry {
+        binding, visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
+        count: None,
+    };
+    let rw_entry = |binding: u32| wgpu::BindGroupLayoutEntry {
+        binding, visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None },
+        count: None,
+    };
     let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("bgl"),
         entries: &[
-            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            ro_entry(0), ro_entry(1), ro_entry(2),
+            rw_entry(3), rw_entry(4), rw_entry(5), rw_entry(6), rw_entry(7),
         ],
     });
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -149,15 +180,14 @@ pub fn run(input_dir: &Path, output_dir: &Path, adapter_idx: usize) -> Result<()
         cache: None,
     });
     let agg_usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
-    let dep_buf = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("deposits"), size: (n_acct * 4) as u64, usage: agg_usage, mapped_at_creation: false,
+    let agg_buf = |label: &'static str| device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some(label), size: (n_acct * 4) as u64, usage: agg_usage, mapped_at_creation: false,
     });
-    let wd_buf = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("withdrawals"), size: (n_acct * 4) as u64, usage: agg_usage, mapped_at_creation: false,
-    });
-    let cnt_buf = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("counts"), size: (n_acct * 4) as u64, usage: agg_usage, mapped_at_creation: false,
-    });
+    let dep_lo_buf = agg_buf("deposits_lo");
+    let dep_hi_buf = agg_buf("deposits_hi");
+    let wd_lo_buf = agg_buf("withdrawals_lo");
+    let wd_hi_buf = agg_buf("withdrawals_hi");
+    let cnt_buf = agg_buf("counts");
 
     let t0 = Instant::now();
     let txn_path = input_dir.join("transactions.csv");
@@ -184,24 +214,28 @@ pub fn run(input_dir: &Path, output_dir: &Path, adapter_idx: usize) -> Result<()
             is_dep.push((rec.get(2).unwrap().as_bytes()[0] == b'D') as u32);
             local += 1;
             if acct.len() == ROWS_PER_CHUNK {
-                dispatch_chunk(&device, &queue, &pipeline, &bgl, &dep_buf, &wd_buf, &cnt_buf, &acct, &amt, &is_dep);
+                dispatch_chunk(&device, &queue, &pipeline, &bgl, &dep_lo_buf, &dep_hi_buf, &wd_lo_buf, &wd_hi_buf, &cnt_buf, &acct, &amt, &is_dep);
                 acct.clear(); amt.clear(); is_dep.clear();
             }
         }
         if !acct.is_empty() {
-            dispatch_chunk(&device, &queue, &pipeline, &bgl, &dep_buf, &wd_buf, &cnt_buf, &acct, &amt, &is_dep);
+            dispatch_chunk(&device, &queue, &pipeline, &bgl, &dep_lo_buf, &dep_hi_buf, &wd_lo_buf, &wd_hi_buf, &cnt_buf, &acct, &amt, &is_dep);
         }
         n.fetch_add(local, Ordering::Relaxed);
     });
     let n = n.load(Ordering::Relaxed);
     device.poll(wgpu::Maintain::Wait);
-    println!("gpu: {} threads, read+dispatch {} rows in {:.2}s", n_threads, n, t0.elapsed().as_secs_f64());
+    eprintln!("gpu: {} threads, read+dispatch {} rows in {:.2}s", n_threads, n, t0.elapsed().as_secs_f64());
 
     crate::key::gate(n as u64).map_err(|e| anyhow!(e))?;
 
-    let deposits = read_back(&device, &queue, &dep_buf, n_acct)?;
-    let withdrawals = read_back(&device, &queue, &wd_buf, n_acct)?;
+    let deposits_lo = read_back(&device, &queue, &dep_lo_buf, n_acct)?;
+    let deposits_hi = read_back(&device, &queue, &dep_hi_buf, n_acct)?;
+    let withdrawals_lo = read_back(&device, &queue, &wd_lo_buf, n_acct)?;
+    let withdrawals_hi = read_back(&device, &queue, &wd_hi_buf, n_acct)?;
     let counts = read_back(&device, &queue, &cnt_buf, n_acct)?;
+
+    let combine64 = |hi: u32, lo: u32| (((hi as u64) << 32) | (lo as u64)) as i64;
 
     let t2 = Instant::now();
     let mut f = BufWriter::new(File::create(output_dir.join("final_balances.csv"))?);
@@ -210,8 +244,8 @@ pub fn run(input_dir: &Path, output_dir: &Path, adapter_idx: usize) -> Result<()
     writeln!(g, "ACCOUNT_ID,TOTAL_DEPOSITS,TOTAL_WITHDRAWALS,TXN_COUNT,ENDING_BALANCE")?;
     let (mut td, mut tw, mut tc, mut te) = (0i64, 0i64, 0i64, 0i64);
     for i in 0..n_acct {
-        let d = deposits[i] as i64;
-        let w = withdrawals[i] as i64;
+        let d = combine64(deposits_hi[i], deposits_lo[i]);
+        let w = combine64(withdrawals_hi[i], withdrawals_lo[i]);
         let c = counts[i] as i64;
         let e = starting[i] + d - w;
         writeln!(f, "{},{}", i, e)?;
@@ -219,6 +253,6 @@ pub fn run(input_dir: &Path, output_dir: &Path, adapter_idx: usize) -> Result<()
         td += d; tw += w; tc += c; te += e;
     }
     writeln!(g, "-1,{},{},{},{}", td, tw, tc, te)?;
-    println!("gpu: wrote outputs in {:.2}s", t2.elapsed().as_secs_f64());
+    eprintln!("gpu: wrote outputs in {:.2}s", t2.elapsed().as_secs_f64());
     Ok(())
 }
