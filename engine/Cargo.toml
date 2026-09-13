@@ -2,7 +2,7 @@
 name = "bylazora-core"
 version = "0.4.1"
 edition = "2021"
-license = "AGPL-3.0-or-later"
+license = "AGPL-3.0-or-later AND Apache-2.0"
 
 [lib]
 name = "bylazora"

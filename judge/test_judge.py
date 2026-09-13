@@ -10,13 +10,19 @@ import sys
 
 import pytest
 
-from lib.judge import judge
+try:
+    from lib.judge import judge
+except ImportError:
+    # The public repo ships judge.py flat, with no lib package around it.
+    from judge import judge
 
 FINAL = "ACCOUNT_ID,BALANCE_CENTS\n0,1600\n1,2800\n"
 SUMMARY = ("ACCOUNT_ID,TOTAL_DEPOSITS,TOTAL_WITHDRAWALS,TXN_COUNT,ENDING_BALANCE\n"
            "0,800,200,3,1600\n-1,3750,1550,10,17200\n")
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+JUDGE_DIR = pathlib.Path(__file__).resolve().parent
+_MONOREPO_LAYOUT = (REPO_ROOT / "lib" / "judge.py").exists()
 
 
 def write_dir(base: pathlib.Path, final: str = FINAL, summary: str = SUMMARY) -> pathlib.Path:
@@ -75,10 +81,17 @@ def test_judge_identity_field(ref, tmp_path):
 
 
 def run_judge(ref_dir, candidate_dir, *extra):
+    if _MONOREPO_LAYOUT:
+        cmd = [sys.executable, "-m", "lib.judge"]
+        cwd = REPO_ROOT
+    else:
+        # Public repo layout: judge.py sits flat next to validate.py, with
+        # no lib package to run as a module.
+        cmd = [sys.executable, str(JUDGE_DIR / "judge.py")]
+        cwd = JUDGE_DIR
     return subprocess.run(
-        [sys.executable, "-m", "lib.judge",
-         "--ref-dir", str(ref_dir), "--candidate-dir", str(candidate_dir), *extra],
-        cwd=REPO_ROOT, capture_output=True, text=True,
+        [*cmd, "--ref-dir", str(ref_dir), "--candidate-dir", str(candidate_dir), *extra],
+        cwd=cwd, capture_output=True, text=True,
     )
 
 
@@ -94,8 +107,27 @@ def test_cli_failed_exits_one(ref, tmp_path):
     assert json.loads(r.stdout)["verdict"] == "failed"
 
 
-def test_cli_files_comma_option(ref, tmp_path):
-    candidate = write_dir(tmp_path / "candidate", summary=SUMMARY.replace("800", "801"))
-    r = run_judge(ref, candidate, "--files", "final_balances.csv")
+def test_cli_files_comma_option_matching_declared_file(ref, tmp_path):
+    candidate = write_dir(tmp_path / "candidate")
+    r = run_judge(ref, candidate, "--files", "final_balances.csv,summary_report.csv")
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout)["verdict"] == "proven"
+
+
+def test_cli_files_narrowed_below_reference_is_partial_not_proven(ref, tmp_path):
+    # The reference has two files; declaring only one must not let a real
+    # mismatch in the excluded file pass as "proven". This is the case the
+    # 2026-09-13 audit found: --files narrowing hid a genuine difference.
+    candidate = write_dir(tmp_path / "candidate", summary=SUMMARY.replace("800", "801"))
+    r = run_judge(ref, candidate, "--files", "final_balances.csv")
+    assert r.returncode != 0, r.stderr
+    result = json.loads(r.stdout)
+    assert result["verdict"] == "partial"
+    assert result["files_excluded"] == ["summary_report.csv"]
+
+
+def test_narrowed_files_with_a_real_mismatch_in_the_checked_set_is_failed(ref, tmp_path):
+    candidate = write_dir(tmp_path / "candidate", final=FINAL.replace("1600", "1601"))
+    result = judge(ref, candidate, files=["final_balances.csv"])
+    assert result["verdict"] == "failed"
+    assert result["files_excluded"] == ["summary_report.csv"]

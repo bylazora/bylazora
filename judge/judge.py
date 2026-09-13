@@ -11,7 +11,12 @@ import argparse
 import json
 import pathlib
 
-from lib.validate import OUTPUT_FILES, compare_outputs
+try:
+    from lib.validate import OUTPUT_FILES, compare_outputs
+except ImportError:
+    # The public repo ships this file flat, next to validate.py, with no
+    # lib package around it (see tools/split_repos.py).
+    from validate import OUTPUT_FILES, compare_outputs
 
 JUDGE_ID = "bylazora-gate"
 
@@ -22,23 +27,38 @@ def judge(ref_dir: pathlib.Path, candidate_dir: pathlib.Path,
 
     The verdict is "proven" only when every declared output file is present and
     byte-identical in both directories. A missing candidate file, a missing
-    reference file, or any byte difference is a failure. With no files declared,
-    the judge compares every file the reference produced instead of proving a
-    vacuous empty comparison.
+    reference file, or any byte difference is a failure.
+
+    files has three states, not two. None (the default: no --files given) is
+    "check the standard two output files", a fixed expectation that catches
+    a reference missing one of them. An explicit empty list is "no files
+    named, so compare whatever the reference actually produced" - a vacuous
+    reference (nothing to compare) still fails rather than proving nothing.
+    A non-empty list is an explicit declaration, checked against what the
+    reference actually contains: narrowing it below the reference's own
+    files returns "partial", not a silent "proven" that never looked at the
+    excluded files. The invariant is that no caller argument can mark a run
+    proven; --files narrowing it to hide a real mismatch would be exactly
+    that.
     """
     ref_dir = pathlib.Path(ref_dir)
     candidate_dir = pathlib.Path(candidate_dir)
 
+    excluded: list[str] = []
     if files is None:
         declared = list(OUTPUT_FILES)
-    else:
-        declared = list(files)
-
-    if not declared:
+    elif not files:
         try:
             declared = sorted(p.name for p in ref_dir.iterdir() if p.is_file())
         except OSError:
             declared = []
+    else:
+        declared = list(files)
+        try:
+            ref_files = set(p.name for p in ref_dir.iterdir() if p.is_file())
+        except OSError:
+            ref_files = set()
+        excluded = sorted(ref_files - set(declared))
 
     if not declared:
         return {
@@ -50,9 +70,18 @@ def judge(ref_dir: pathlib.Path, candidate_dir: pathlib.Path,
         }
 
     mismatches = compare_outputs(ref_dir, candidate_dir, tuple(declared))
+    if mismatches:
+        verdict = "failed"
+    elif excluded:
+        verdict = "partial"
+    else:
+        verdict = "proven"
+
     return {
-        "verdict": "proven" if not mismatches else "failed",
+        "verdict": verdict,
         "files_compared": len(declared),
+        "files_declared": declared,
+        "files_excluded": excluded,
         "mismatch_count": len(mismatches),
         "mismatches": mismatches,
         "judge": JUDGE_ID,
@@ -61,7 +90,7 @@ def judge(ref_dir: pathlib.Path, candidate_dir: pathlib.Path,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m lib.judge",
+        prog="judge.py",
         description="Score a candidate backend against the COBOL reference.",
     )
     parser.add_argument("--ref-dir", required=True,
