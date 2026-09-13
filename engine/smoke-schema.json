@@ -1,0 +1,6 @@
+[
+  {"name":"ACCT_ID","db2_type":"BIGINT","precision":19,"scale":0,"nullable":false,"key":true},
+  {"name":"ACCT_NAME","db2_type":"VARCHAR","precision":40,"scale":0,"nullable":true,"key":false},
+  {"name":"BALANCE","db2_type":"DECIMAL","precision":11,"scale":2,"nullable":false,"key":false},
+  {"name":"OPENED","db2_type":"DATE","precision":10,"scale":0,"nullable":true,"key":false}
+]
