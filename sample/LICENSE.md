@@ -1,11 +1,11 @@
-Provecta Commercial Licence, Version 2
+Bylazora Commercial Licence, Version 2
 
-Copyright (c) 2026 Provecta. All rights reserved.
+Copyright (c) 2026 Bylazora. All rights reserved.
 
-This licence covers (a) the closed software of Provecta (the licence portal,
+This licence covers (a) the closed software of Bylazora (the licence portal,
 the managed-run dashboard, and their documentation) and (b) a commercial
-licence option for provecta-core for licensees who cannot accept its AGPL
-terms or who embed it in closed products. provecta-core itself is free
+licence option for bylazora-core for licensees who cannot accept its AGPL
+terms or who embed it in closed products. bylazora-core itself is free
 software under AGPL-3.0-or-later (its parsers under Apache-2.0); nothing in
 this document changes that.
 
@@ -17,7 +17,7 @@ under this document.
 
 2. Commercial licence for the engine. By order or subscription, the licensor
 grants one named organisation the right to use, modify, and run
-provecta-core without the AGPL obligations, including closed embedding,
+bylazora-core without the AGPL obligations, including closed embedding,
 for its own workloads and its client engagements, at any scale and on any
 number of installations, including installations on its clients' own
 estates for the duration of an engagement. Every keyed run names the
