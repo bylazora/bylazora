@@ -1,0 +1,8 @@
+Apache License
+Version 2.0, January 2004
+http://www.apache.org/licenses/
+
+The parsers/ directory (copybook parser, DB2 importer) is licensed under the
+Apache License 2.0. The full licence text is published at
+https://www.apache.org/licenses/LICENSE-2.0.txt and will be copied here
+verbatim before the first public release.

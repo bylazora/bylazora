@@ -1,0 +1,11 @@
+name: equivalence-gate
+on: [push, pull_request]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install legacy compiler
+        run: sudo apt-get update && sudo apt-get install -y gnucobol
+      - name: run the migration and the gate
+        run: bash sample/run_all.sh
