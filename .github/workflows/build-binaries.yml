@@ -1,0 +1,125 @@
+name: build-binaries
+
+# Builds the release binaries for every platform. Signing happens OFFLINE
+# after download (the Ed25519 seed never enters GitHub), then the artefacts
+# are attached to the release with gh release upload.
+#
+# The Linux glibc binary is the one built with the CUDA tier; every other
+# platform ships CPU + wgpu. The wgpu tier runs on any GPU (NVIDIA, AMD,
+# Intel, Apple) or none at all (software Vulkan), so CUDA is an optional
+# acceleration path, never a requirement.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  VERSION: "0.4.2"
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cuda toolkit
+        run: |
+          if command -v nvcc >/dev/null 2>&1; then
+            nvcc --version | tail -1
+          else
+            sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit
+          fi
+      - name: build (glibc, with the CUDA tier)
+        run: |
+          export RUSTFLAGS="--remap-path-prefix=${GITHUB_WORKSPACE}=/build"
+          cargo build --release --features cuda
+          cp target/release/bylazora-core bylazora-core-${{ env.VERSION }}-linux-x86_64
+      - name: assert no runner paths leaked
+        run: |
+          LEAK=$(strings bylazora-core-${{ env.VERSION }}-linux-x86_64 | grep -c '/home/runner' || true)
+          echo "runner path occurrences: $LEAK"
+          test "$LEAK" -eq 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bylazora-core-${{ env.VERSION }}-linux-x86_64
+          path: bylazora-core-${{ env.VERSION }}-linux-x86_64
+
+  linux-x86_64-musl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - name: build (static musl)
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools
+          cargo build --release --target x86_64-unknown-linux-musl
+          cp target/x86_64-unknown-linux-musl/release/bylazora-core bylazora-core-${{ env.VERSION }}-linux-x86_64-musl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bylazora-core-${{ env.VERSION }}-linux-x86_64-musl
+          path: bylazora-core-${{ env.VERSION }}-linux-x86_64-musl
+
+  linux-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - name: build (aarch64)
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+          cargo build --release --target aarch64-unknown-linux-gnu
+          cp target/aarch64-unknown-linux-gnu/release/bylazora-core bylazora-core-${{ env.VERSION }}-linux-aarch64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bylazora-core-${{ env.VERSION }}-linux-aarch64
+          path: bylazora-core-${{ env.VERSION }}-linux-aarch64
+
+  macos-aarch64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build (Apple Silicon)
+        run: |
+          cargo build --release
+          cp target/release/bylazora-core bylazora-core-${{ env.VERSION }}-macos-aarch64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bylazora-core-${{ env.VERSION }}-macos-aarch64
+          path: bylazora-core-${{ env.VERSION }}-macos-aarch64
+
+  macos-x86_64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build (Intel)
+        run: |
+          cargo build --release
+          cp target/release/bylazora-core bylazora-core-${{ env.VERSION }}-macos-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bylazora-core-${{ env.VERSION }}-macos-x86_64
+          path: bylazora-core-${{ env.VERSION }}-macos-x86_64
+
+  windows-x86_64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build
+        run: cargo build --release
+      - name: name the artefact
+        run: Copy-Item target\release\bylazora-core.exe bylazora-core-${{ env.VERSION }}-windows-x86_64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bylazora-core-${{ env.VERSION }}-windows-x86_64
+          path: bylazora-core-${{ env.VERSION }}-windows-x86_64.exe
