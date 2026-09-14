@@ -115,18 +115,22 @@ jobs:
           path: engine/bylazora-core-${{ env.VERSION }}-macos-aarch64
 
   macos-x86_64:
-    runs-on: macos-13
+    # Intel macos runners (macos-13) queue for tens of minutes; the Intel
+    # binary cross-compiles cleanly on the Apple Silicon runner instead.
+    runs-on: macos-14
     defaults:
       run:
         working-directory: engine
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: build (Intel)
+        with:
+          targets: x86_64-apple-darwin
+      - name: build (Intel, cross-compiled)
         run: |
           export RUSTFLAGS="--remap-path-prefix=${GITHUB_WORKSPACE}=/build --remap-path-prefix=/Users/runner/.cargo=/cargo"
-          cargo build --release
-          cp target/release/bylazora-core bylazora-core-${{ env.VERSION }}-macos-x86_64
+          cargo build --release --target x86_64-apple-darwin
+          cp target/x86_64-apple-darwin/release/bylazora-core bylazora-core-${{ env.VERSION }}-macos-x86_64
       - uses: actions/upload-artifact@v4
         with:
           name: bylazora-core-${{ env.VERSION }}-macos-x86_64
