@@ -2,6 +2,12 @@
 name = "bylazora-core"
 version = "0.4.2"
 edition = "2021"
+description = "Byte-exact COBOL mainframe migration engine: one binary runs the equivalence gate and the production runtime across CPU, any-GPU (wgpu) and CUDA tiers, with an MCP server for coding agents."
+readme = "README.md"
+repository = "https://github.com/bylazora/bylazora"
+homepage = "https://bylazora.com"
+keywords = ["cobol", "mainframe", "migration", "gpu", "cuda"]
+categories = ["command-line-utilities", "development-tools"]
 license = "AGPL-3.0-or-later AND Apache-2.0"
 
 [lib]
