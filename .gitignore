@@ -3,3 +3,7 @@ target/
 .DS_Store
 results/
 *.key
+__pycache__/
+*.pyc
+.pytest_cache/
+sample/legacy/batchtxn

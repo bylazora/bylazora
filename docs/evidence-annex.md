@@ -10,7 +10,7 @@
 
 A COBOL batch program performing per-account aggregation over transaction files: 55/45 deposit/withdrawal mix, integer cents throughout, two output files (final balances and summary report) with a grand-totals row, LF line endings. Implemented two ways: the shipped Rust engine (bylazora-core, one binary, CPU tier and wgpu GPU tier) and, for measurement provenance, a Python study of six backends (NumPy, NumPy process-parallel, Numba, RAPIDS cuDF, RAPIDS cuPy, plus the compiled GnuCOBOL baseline). Every migrated run, both ways, passes the same byte-exact gate.
 
-## 2. Main benchmark: the shipped Rust engine (final run, 2026-09-13, bylazora-core 0.4.0; the runs below were measured on the 0.3.2 build, whose compute paths 0.4.0 carries unchanged - 0.4.0 adds the C ABI, the copybook parser, and the DB2 importer)
+## 2. Main benchmark: the shipped Rust engine (final run, 2026-09-13, on the 0.3.2 build; 0.4.1 adds the C ABI, the copybook parser, the DB2 importer, and widens the GPU and CUDA per-account accumulators from 32-bit to 64-bit, a correctness fix with no effect on results at this benchmark's scale - the numbers below are not yet re-measured on 0.4.1 and should be treated as pending confirmation, not as unchanged by assertion)
 
 Speedup versus COBOL (mean of 3 cold-cache reps per cell):
 
