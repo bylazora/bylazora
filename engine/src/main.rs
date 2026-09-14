@@ -19,7 +19,7 @@ enum Backend {
 }
 
 #[derive(Parser)]
-#[command(name = "bylazora-core", version = "0.4.1")]
+#[command(name = "bylazora-core", version)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
