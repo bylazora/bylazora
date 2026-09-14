@@ -4,6 +4,9 @@ name: build-binaries
 # after download (the Ed25519 seed never enters GitHub), then the artefacts
 # are attached to the release with gh release upload.
 #
+# The crate lives in engine/, not the repo root - every run step below uses
+# working-directory: engine.
+#
 # The Linux glibc binary is the one built with the CUDA tier; every other
 # platform ships CPU + wgpu. The wgpu tier runs on any GPU (NVIDIA, AMD,
 # Intel, Apple) or none at all (software Vulkan), so CUDA is an optional
@@ -22,6 +25,9 @@ env:
 jobs:
   linux-x86_64:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -45,10 +51,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: bylazora-core-${{ env.VERSION }}-linux-x86_64
-          path: bylazora-core-${{ env.VERSION }}-linux-x86_64
+          path: engine/bylazora-core-${{ env.VERSION }}-linux-x86_64
 
   linux-x86_64-musl:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -62,10 +71,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: bylazora-core-${{ env.VERSION }}-linux-x86_64-musl
-          path: bylazora-core-${{ env.VERSION }}-linux-x86_64-musl
+          path: engine/bylazora-core-${{ env.VERSION }}-linux-x86_64-musl
 
   linux-aarch64:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -80,10 +92,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: bylazora-core-${{ env.VERSION }}-linux-aarch64
-          path: bylazora-core-${{ env.VERSION }}-linux-aarch64
+          path: engine/bylazora-core-${{ env.VERSION }}-linux-aarch64
 
   macos-aarch64:
     runs-on: macos-14
+    defaults:
+      run:
+        working-directory: engine
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -94,10 +109,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: bylazora-core-${{ env.VERSION }}-macos-aarch64
-          path: bylazora-core-${{ env.VERSION }}-macos-aarch64
+          path: engine/bylazora-core-${{ env.VERSION }}-macos-aarch64
 
   macos-x86_64:
     runs-on: macos-13
+    defaults:
+      run:
+        working-directory: engine
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -108,10 +126,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: bylazora-core-${{ env.VERSION }}-macos-x86_64
-          path: bylazora-core-${{ env.VERSION }}-macos-x86_64
+          path: engine/bylazora-core-${{ env.VERSION }}-macos-x86_64
 
   windows-x86_64:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: engine
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -122,4 +143,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: bylazora-core-${{ env.VERSION }}-windows-x86_64
-          path: bylazora-core-${{ env.VERSION }}-windows-x86_64.exe
+          path: engine/bylazora-core-${{ env.VERSION }}-windows-x86_64.exe
