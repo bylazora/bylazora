@@ -119,7 +119,7 @@ Peak demand is the test every migrated platform must pass. A revenue agency at t
 
 **Platform cost.** A worked example: nightly batch of 100M transactions, 3 hours daily processing, one L40S-class GPU instance (18,176 CUDA cores) plus one CPU instance, 2 TB object storage, 200 GB monthly egress - roughly USD 380/month on AWS on-demand, before spot and commitment discounts. Against a conservative USD 3,000-8,000/month mainframe allocation that is an 87-95% reduction; published industry outcomes are consistent (30-50% three-year TCO reduction with ~22-month median payback; named cases report up to 70-90%).
 
-**Engagement model.** Fixed-fee and value-anchored: discovery, per-job migration tiers, and optional managed-run support are quoted against the assessed function inventory - not hours - and shared at proposal stage. Pricing detail is deliberately kept out of public documents so every quote reflects the estate in front of us. Acceptance criteria are contractual: byte-exact equivalence and the benchmark evidence.
+**Engagement model.** Fixed-fee and value-anchored: discovery, per-job migration tiers, and optional ongoing support are quoted against the assessed function inventory - not hours - and shared at proposal stage. Pricing detail is deliberately kept out of public documents so every quote reflects the estate in front of us. Acceptance criteria are contractual: byte-exact equivalence and the benchmark evidence.
 
 ## 9. Risk, governance, and compliance
 
@@ -134,7 +134,7 @@ Peak demand is the test every migrated platform must pass. A revenue agency at t
 - **Discovery** (2-6 weeks per workload cluster): function inventory with hot-path ranking, data-interface catalog, mainframe-replication test environment, and a fixed-fee migration proposal. No production change occurs during discovery.
 - **Migration** (per job tier, typically weeks per job): the seven-phase cycle, ending in equivalence-proven acceptance artifacts.
 - **Shadow run and cutover** (at least one full business cycle): dual-run, reconciliation, per-function cutover.
-- **Managed run** (optional ongoing): SLO-managed operation of the target platform, including the seasonal peak plan.
+- **Steady state** (optional): your team runs the target platform on the open engine. Continuous equivalence monitoring, the seasonal peak plan, and SLO-managed operation are available from us if you want them.
 
 ## 11. How fast: the six-month program
 
@@ -145,8 +145,8 @@ Bylazora targets end-to-end delivery of a representative estate within six month
 | Grab + Review (discovery) | 1-4 | Code and documentation intake; AI-assisted inventory; hot-path ranking; data-interface catalog; mainframe-replication test environment |
 | Rebuild + Deploy + Migrate data | 5-16 | Migration waves - many functions in parallel, each re-implemented or rehosted on its tier, each equivalence-proven before it proceeds |
 | Test + shadow run | 17-20 | Dual-run against production through a full business cycle; continuous reconciliation via the equivalence gate |
-| Roll over + decommission | 21-24 | Per-function cutover; parallel-run sign-off; decommissioning; handover to managed run |
-| Managed run (ongoing) | 25+ | SLO-managed operation, seasonal peak plans, continuous equivalence monitoring |
+| Roll over + decommission | 21-24 | Per-function cutover; parallel-run sign-off; decommissioning; handover to your team |
+| Steady state | 25+ | Your team runs it on the engine: continuous equivalence monitoring and seasonal peak plans. Optional SLO-managed operation from us. |
 
 Three properties make a six-month program credible where traditional migrations run years: parallel waves are safe because every function carries its own byte-exact proof; the mainframe keeps running throughout, so the business never cuts over blind; and each phase has a hard governance artifact, so slippage is visible in week one, not month eighteen.
 

@@ -79,7 +79,7 @@ The harness measures each job on the candidate tiers and hands the migration tea
 
 - Bylazora Developer (free). The full engine, the gate, and the MCP interface for evaluation and migration trials, capped at 10 million rows per job. No key, no form, no telemetry.
 - Bylazora Pro (USD 4,900/year per production team). One named organisation, unlimited scale, production use of its own and its clients' workloads, including installs on client estates. Every run names the licensee, and the key's signed expiry ends engagement access unless renewed. An Ed25519-signed key, verified locally (bylazora-core licence set, or BYLAZORA_KEY); no network, no telemetry.
-- Bylazora Enterprise (order form). Estate-scale programs, the managed-run dashboard, support SLAs, and embedding or redistributing the engine. Shops of any size, including one-person boutiques, run client engagements on a Pro key. Acceptance criteria in your contracts stop being opinions and become byte comparisons. The governed seven-phase service (The Governed Exit) runs on the same engine.
+- Bylazora Enterprise (order form). Estate-scale programs, support SLAs, and embedding or redistributing the engine. Shops of any size, including one-person boutiques, run client engagements on a Pro key. Acceptance criteria in your contracts stop being opinions and become byte comparisons. The governed seven-phase service (The Governed Exit) runs on the same engine.
 
 On AI: in our engagements, AI drafts specifications, translations, and tests; humans sign; the gate disposes. The library ships no model and no telemetry. Its AI interface is an MCP server plus a JSON contract over the same CLI - your assistant can operate the engine, propose, and measure. It cannot mark a job proven. Only the validator can.
 
@@ -106,7 +106,7 @@ The code ships. The know-how stays: the migration playbook, the benchmark corpor
 
 Every addition lands behind the same byte-exact gate.
 
-| **Ships today** | **Estate intake (next)** | **Managed run** | **AI-assisted translation** |
+| **Ships today** | **Estate intake (next)** | **Self-hosted reconciliation** | **AI-assisted translation** |
 |---|---|---|---|
 | The engine core: JobSpec contract, validator, harness, backend templates, CLI, and the MCP interface | Read copybooks, DB2 schemas, and JCL directly into job specifications - record layouts, fixed-point fields, batch windows and dependencies - a real estate specified in hours, not weeks | Dual-run shadowing with a self-hosted reconciliation dashboard, drilling down to the byte diff behind any mismatch | In our engagements: AI drafts translations and test suites; humans sign, the gate disposes, and the gate-as-judge harness scores every draft byte-for-byte before it is considered |
 

@@ -97,7 +97,7 @@ The to-be platform is a governed, cloud-native batch estate:
 
 **Target platform cost (worked example):** a nightly batch of 100M transactions, 3 hours of daily processing, one L40S-class GPU instance (18,176 CUDA cores) plus one CPU instance, 2 TB of object storage, and 200 GB of monthly egress prices at roughly USD 380/month on AWS on-demand - before spot or commitment discounts. Against even a conservative USD 3,000-8,000/month mainframe allocation, that is an 87-95% reduction, and the published industry outcome range is consistent (30-50% three-year TCO reduction with a ~22-month median payback across modernization programs generally; headline cases report up to 70-90% with named clients).
 
-**Engagement model:** fixed-fee and value-anchored - discovery, per-job migration tiers, and optional managed-run support are quoted against the assessed function inventory, not hours, and shared at proposal stage. Every engagement's acceptance criterion is the same: byte-exact equivalence and the benchmark evidence.
+**Engagement model:** fixed-fee and value-anchored - discovery, per-job migration tiers, and optional ongoing support are quoted against the assessed function inventory, not hours, and shared at proposal stage. Every engagement's acceptance criterion is the same: byte-exact equivalence and the benchmark evidence.
 
 ## 8. Getting started
 
