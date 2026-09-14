@@ -1,20 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Licence keys and the free-tier scale gate.
+// Licence keys: a licensee record, not a gate.
 //
 // Keys are Ed25519-signed tokens verified offline: the binary holds only the
-// public key, so reversing the binary cannot forge keys. Patching the check
-// itself remains possible, exactly as with every offline licence, and the
-// licence plus the gate's own run records is the enforcement for that (see
-// docs/legal/licensing-model.md). No network, no telemetry, ever: the licence
-// check is a pure function of the key, the row count, and the clock, so the
-// engine runs air-gapped.
+// public key, so reversing the binary cannot forge keys. Nothing here gates a
+// run: the engine is free and unlimited under AGPL-3.0-or-later, so a key is
+// verified and reported, for the run record and the licensee's own audit, but
+// never enforced. What the licence sells is the AGPL exception, support and the
+// engagement - the parts that cannot be patched out (see
+// docs/legal/licensing-model.md). No network, no telemetry, ever: resolution is
+// a pure function of the key and the clock, so the engine runs air-gapped.
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 #[cfg(test)]
 use ed25519_dalek::{Signer, SigningKey};
 use std::path::PathBuf;
-
-/// Free Developer tier: rows per job.
-pub const FREE_ROWS: u64 = 10_000_000;
 
 /// The production signing key's public half. Not a secret: publishing it is
 /// the point of an offline-verified licence. Used for real verification only
@@ -69,6 +67,7 @@ fn now_days() -> u64 {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Tier { Pro }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct License {
     pub org: String,
     pub tier: Tier,
@@ -123,37 +122,58 @@ impl License {
     }
 }
 
-/// Pure gate: rows, an optional key, and "today" in days since epoch.
-pub fn gate_with(rows: u64, key: Option<&str>, now_days: u64) -> Result<(), String> {
-    match key {
-        Some(k) => {
-            let lic = License::parse(k)
-                .map_err(|e| format!("licence key rejected: {e}. Get a production key at {LICENCE_URL}"))?;
-            lic.check_expiry(now_days)?;
-            Ok(())
-        }
-        None => {
-            if rows <= FREE_ROWS {
-                Ok(())
-            } else {
-                Err(format!(
-                    "{rows} rows exceeds the free Developer tier cap ({FREE_ROWS} rows per job). \
-Install a production key with: bylazora-core licence set <key>  (or set BYLAZORA_KEY). \
-Get a key at {LICENCE_URL}"))
-            }
-        }
+/// What resolving a licence produced. Reported, never enforced.
+#[derive(Debug, PartialEq)]
+pub enum LicenceOutcome {
+    /// No key installed. An unlicensed run, which is entirely normal and has no
+    /// limit of any kind.
+    None,
+    /// A valid, current key.
+    Valid(License),
+    /// A key was presented and its signature checks out, but it is past its
+    /// expiry. Reported so the run record is honest about it.
+    Expired(String),
+    /// A key was presented and failed to parse or verify.
+    Invalid(String),
+}
+
+/// Pure resolution: key and "today" in days since epoch, no I/O, no printing.
+/// Split out from announce_licence so the behaviour is directly testable.
+pub fn resolve(key: Option<&str>, now_days: u64) -> LicenceOutcome {
+    let Some(k) = key else { return LicenceOutcome::None };
+    match License::parse(k) {
+        Err(e) => LicenceOutcome::Invalid(e),
+        Ok(lic) => match lic.check_expiry(now_days) {
+            Ok(()) => LicenceOutcome::Valid(lic),
+            Err(e) => LicenceOutcome::Expired(e),
+        },
     }
 }
 
-/// Gate a job of this many rows against the installed key.
-pub fn gate(rows: u64) -> Result<(), String> {
-    let key = load_key();
-    if let Some(k) = key.as_deref() {
-        if let Ok(lic) = License::parse(k) {
-            eprintln!("licence: bylazora v2 {:?}, licensed to {} until {}", lic.tier, lic.org, lic.expiry);
-        }
+/// Report the licence for a run, and return what it resolved to.
+///
+/// There is no scale gate and no expiry gate. The engine is free and unlimited
+/// under AGPL-3.0-or-later, so nothing about a licence stops a run: a key is
+/// verified and announced so the run record can name the licensee, and a key
+/// that is expired or malformed is announced too, and the run proceeds either
+/// way. Anything else would make installing a key worse than not installing
+/// one, which is the opposite of honest.
+pub fn announce_licence() -> LicenceOutcome {
+    let outcome = resolve(load_key().as_deref(), now_days());
+    match &outcome {
+        LicenceOutcome::None => {}
+        LicenceOutcome::Valid(lic) => eprintln!(
+            "licence: bylazora v2 {:?}, licensed to {} until {}",
+            lic.tier, lic.org, lic.expiry
+        ),
+        LicenceOutcome::Expired(e) => eprintln!(
+            "licence: {e}. The run is unaffected: this build is AGPL. Renew at {LICENCE_URL}"
+        ),
+        LicenceOutcome::Invalid(e) => eprintln!(
+            "licence: key rejected: {e}. The run is unaffected: this build is AGPL"
+        ),
     }
-    gate_with(rows, key.as_deref(), now_days())
+    outcome
 }
 
 /// Where the licence key lives: BYLAZORA_KEY_FILE, else the XDG config dir.
@@ -290,37 +310,54 @@ mod tests {
     }
 
     #[test]
-    fn expired_key_rejected_even_under_cap() {
-        let err = gate_with(FREE_ROWS, Some(&acme_key()), EXPIRY_DAYS + 1).unwrap_err();
-        assert!(err.contains("expired"), "message should say expired: {err}");
+    fn the_engine_has_no_scale_gate() {
+        // resolve() takes no row count at all, and that is the point: there is
+        // nothing left to gate. A billion-row job with no key is an ordinary
+        // unlicensed run, not an error. If a rows parameter ever reappears in
+        // this signature, this test stops compiling and forces the argument.
+        assert_eq!(resolve(None, EXPIRY_DAYS), LicenceOutcome::None);
     }
 
     #[test]
-    fn expiry_boundary_last_day_passes() {
-        assert!(gate_with(FREE_ROWS + 1, Some(&acme_key()), EXPIRY_DAYS).is_ok());
+    fn no_key_is_a_normal_unlicensed_run() {
+        assert_eq!(resolve(None, EXPIRY_DAYS), LicenceOutcome::None);
     }
 
     #[test]
-    fn gate_within_free_cap_without_key_passes() {
-        assert!(gate_with(FREE_ROWS, None, EXPIRY_DAYS).is_ok());
+    fn a_valid_key_resolves_as_licensed() {
+        match resolve(Some(&acme_key()), EXPIRY_DAYS - 365) {
+            LicenceOutcome::Valid(lic) => {
+                assert_eq!(lic.org, "acme");
+                assert_eq!(lic.tier, Tier::Pro);
+            }
+            other => panic!("expected a valid licence, got {other:?}"),
+        }
     }
 
     #[test]
-    fn gate_over_cap_without_key_fails_with_upgrade_message() {
-        let err = gate_with(FREE_ROWS + 1, None, EXPIRY_DAYS).unwrap_err();
-        assert!(err.contains("BYLAZORA_KEY"), "message should mention the env var: {err}");
-        assert!(err.contains("licence set"), "message should mention the install command: {err}");
+    fn expiry_boundary_last_day_still_resolves_as_licensed() {
+        assert!(matches!(resolve(Some(&acme_key()), EXPIRY_DAYS), LicenceOutcome::Valid(_)));
     }
 
     #[test]
-    fn gate_over_cap_with_valid_key_passes() {
-        assert!(gate_with(FREE_ROWS + 1, Some(&acme_key()), EXPIRY_DAYS - 365).is_ok());
+    fn an_expired_key_is_reported_but_does_not_block() {
+        // Expiry ends the commercial grant. It does not stop the binary, because
+        // the AGPL grant does not expire. Blocking here would make installing a
+        // key worse than installing nothing, which is the opposite of honest.
+        match resolve(Some(&acme_key()), EXPIRY_DAYS + 1) {
+            LicenceOutcome::Expired(msg) => {
+                assert!(msg.contains("expired"), "should say expired: {msg}")
+            }
+            other => panic!("expected Expired, got {other:?}"),
+        }
     }
 
     #[test]
-    fn gate_over_cap_with_invalid_key_fails() {
+    fn an_invalid_key_is_reported_but_does_not_block() {
         let bad = "bylazora-v2-acme-20271231-deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
-        let err = gate_with(FREE_ROWS + 1, Some(bad), EXPIRY_DAYS - 365).unwrap_err();
-        assert!(err.contains("invalid"), "message should explain the key is invalid: {err}");
+        match resolve(Some(bad), EXPIRY_DAYS - 365) {
+            LicenceOutcome::Invalid(msg) => assert!(!msg.is_empty(), "should explain the failure"),
+            other => panic!("expected Invalid, got {other:?}"),
+        }
     }
 }

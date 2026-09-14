@@ -107,7 +107,7 @@ pub fn run(input_dir: &Path, output_dir: &Path, _adapter: usize) -> Result<()> {
     }
     producer.join().map_err(|_| anyhow!("producer panicked"))?;
     let n = total.load(Ordering::Relaxed);
-    crate::key::gate(n as u64).map_err(|e| anyhow!(e))?;
+    crate::key::announce_licence();
     eprintln!("cuda: {} threads, read+dispatch {} rows in {:.2}s", n_threads, n, t0.elapsed().as_secs_f64());
 
     let deposits = stream.memcpy_dtov(&dep_dev).map_err(|e| anyhow!("dtoh: {e:?}"))?;

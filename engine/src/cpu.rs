@@ -100,7 +100,7 @@ pub fn run(input_dir: &Path, output_dir: &Path) -> Result<()> {
     }
     let read_s = t0.elapsed().as_secs_f64();
 
-    crate::key::gate(n as u64).map_err(|e| anyhow!(e))?;
+    crate::key::announce_licence();
 
     let t2 = Instant::now();
     let mut f = BufWriter::new(File::create(output_dir.join("final_balances.csv"))?);

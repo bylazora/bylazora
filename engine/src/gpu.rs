@@ -227,7 +227,7 @@ pub fn run(input_dir: &Path, output_dir: &Path, adapter_idx: usize) -> Result<()
     device.poll(wgpu::Maintain::Wait);
     eprintln!("gpu: {} threads, read+dispatch {} rows in {:.2}s", n_threads, n, t0.elapsed().as_secs_f64());
 
-    crate::key::gate(n as u64).map_err(|e| anyhow!(e))?;
+    crate::key::announce_licence();
 
     let deposits_lo = read_back(&device, &queue, &dep_lo_buf, n_acct)?;
     let deposits_hi = read_back(&device, &queue, &dep_hi_buf, n_acct)?;
