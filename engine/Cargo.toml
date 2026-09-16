@@ -1,6 +1,6 @@
 [package]
 name = "bylazora-core"
-version = "0.4.2"
+version = "0.5.0"
 edition = "2021"
 description = "Byte-exact COBOL mainframe migration engine: one binary runs the equivalence gate and the production runtime across CPU, any-GPU (wgpu) and CUDA tiers, with an MCP server for coding agents."
 readme = "README.md"

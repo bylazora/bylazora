@@ -6,12 +6,13 @@
 // integrate the engine from C, C++, or any FFI. No component performs network
 // I/O: the engine runs air-gapped, and the licence check is a pure function of
 // the key, the row count, and the clock.
-pub mod cpu;
-pub mod gpu;
-#[cfg(feature = "cuda")]
-pub mod cuda;
-pub mod key;
-pub mod validator;
 pub mod capi;
 pub mod copybook;
+pub mod cpu;
+#[cfg(feature = "cuda")]
+pub mod cuda;
 pub mod db2;
+pub mod gpu;
+pub mod key;
+pub mod migrate;
+pub mod validator;

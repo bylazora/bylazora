@@ -3,10 +3,10 @@
 mod mcp;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand, ValueEnum};
 #[cfg(feature = "cuda")]
 use bylazora::cuda;
-use bylazora::{copybook, cpu, db2, gpu, key, validator};
+use bylazora::{copybook, cpu, db2, gpu, key, migrate, validator};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -61,6 +61,11 @@ enum Cmd {
         #[command(subcommand)]
         action: CopybookAction,
     },
+    /// Scaffold and drive a gated migration workspace (new/reference/verify/status)
+    Migrate {
+        #[command(subcommand)]
+        action: MigrateAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -93,6 +98,43 @@ enum LicenceAction {
         #[arg(long)]
         file: Option<PathBuf>,
     },
+}
+
+#[derive(Subcommand)]
+enum MigrateAction {
+    /// Scaffold a gated migration workspace for one job
+    New {
+        job: String,
+        /// Parent directory for the workspace (default: current directory)
+        #[arg(long)]
+        dir: Option<PathBuf>,
+        /// Declared input file, relative to the job's input/ directory
+        #[arg(long = "input")]
+        inputs: Vec<String>,
+        /// Declared output file name
+        #[arg(long = "output")]
+        outputs: Vec<String>,
+        /// COBOL copybook to render into the job schema
+        #[arg(long)]
+        copybook: Option<PathBuf>,
+        /// Legacy COBOL source for the GnuCOBOL reference capture
+        #[arg(long = "cobol-source")]
+        cobol_source: Option<PathBuf>,
+    },
+    /// Seal the reference outputs (the byte-level contract)
+    Reference {
+        job: PathBuf,
+        /// Copy the reference from this directory instead of running capture.sh
+        #[arg(long)]
+        from: Option<PathBuf>,
+        /// Replace an existing seal
+        #[arg(long)]
+        force: bool,
+    },
+    /// Build, run and gate the target against the sealed reference
+    Verify { job: PathBuf },
+    /// Show the job contract and the latest verdict
+    Status { job: PathBuf },
 }
 
 #[derive(Subcommand)]
@@ -169,5 +211,22 @@ fn main() -> Result<()> {
                 Ok(())
             }
         },
+        Cmd::Migrate { action } => {
+            let r = match action {
+                MigrateAction::New { job, dir, inputs, outputs, copybook, cobol_source } => {
+                    migrate::cmd_new(&job, dir.as_deref(), &inputs, &outputs, copybook.as_deref(), cobol_source.as_deref())
+                        .map(|_| "workspace scaffolded".to_string())
+                }
+                MigrateAction::Reference { job, from, force } => {
+                    migrate::cmd_reference(&job, from.as_deref(), force).map(|_| "reference sealed".to_string())
+                }
+                MigrateAction::Verify { job } => migrate::cmd_verify(&job).map(|_| "IDENTICAL".to_string()),
+                MigrateAction::Status { job } => migrate::cmd_status(&job),
+            };
+            match r {
+                Ok(m) => { println!("{m}"); Ok(()) }
+                Err(e) => { eprintln!("{e}"); std::process::exit(1); }
+            }
+        }
     }
 }

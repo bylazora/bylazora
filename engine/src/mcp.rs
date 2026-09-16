@@ -23,10 +23,16 @@ struct ToolResult {
 
 impl ToolResult {
     fn ok(text: impl Into<String>) -> Self {
-        Self { text: text.into(), is_error: false }
+        Self {
+            text: text.into(),
+            is_error: false,
+        }
     }
     fn err(text: impl Into<String>) -> Self {
-        Self { text: text.into(), is_error: true }
+        Self {
+            text: text.into(),
+            is_error: true,
+        }
     }
     fn into_json(self) -> Value {
         json!({ "content": [{ "type": "text", "text": self.text }], "isError": self.is_error })
@@ -41,21 +47,28 @@ fn handle_call(params: &Value) -> ToolResult {
             let r = args.get("ref_dir").and_then(|v| v.as_str());
             let o = args.get("other_dir").and_then(|v| v.as_str());
             match (r, o) {
-                (Some(a), Some(b)) => match bylazora::validator::compare_outputs(&PathBuf::from(a), &PathBuf::from(b)) {
-                    Ok(errs) if errs.is_empty() => ToolResult::ok("IDENTICAL"),
-                    Ok(errs) => ToolResult::ok(format!("MISMATCH\n{}", errs.join("\n"))),
-                    Err(e) => ToolResult::err(format!("ERROR: {e}")),
-                },
+                (Some(a), Some(b)) => {
+                    match bylazora::validator::compare_outputs(&PathBuf::from(a), &PathBuf::from(b))
+                    {
+                        Ok(errs) if errs.is_empty() => ToolResult::ok("IDENTICAL"),
+                        Ok(errs) => ToolResult::ok(format!("MISMATCH\n{}", errs.join("\n"))),
+                        Err(e) => ToolResult::err(format!("ERROR: {e}")),
+                    }
+                }
                 _ => ToolResult::err("error: ref_dir and other_dir required"),
             }
         }
         "bench" => {
             let i = args.get("input_dir").and_then(|v| v.as_str());
             let o = args.get("output_dir").and_then(|v| v.as_str());
-            let backend = args.get("backend").and_then(|v| v.as_str()).unwrap_or("cpu");
+            let backend = args
+                .get("backend")
+                .and_then(|v| v.as_str())
+                .unwrap_or("cpu");
             if !KNOWN_BACKENDS.contains(&backend) {
                 return ToolResult::err(format!(
-                    "unknown backend: {backend} (expected one of {})", KNOWN_BACKENDS.join(", ")
+                    "unknown backend: {backend} (expected one of {})",
+                    KNOWN_BACKENDS.join(", ")
                 ));
             }
             match (i, o) {
@@ -83,12 +96,34 @@ fn handle_call(params: &Value) -> ToolResult {
             match src {
                 Some(path) => match std::fs::read_to_string(path) {
                     Ok(text) => match bylazora::copybook::parse_copybook(&text) {
-                        Ok(fields) => ToolResult::ok(bylazora::copybook::field_schema(&fields).to_string()),
+                        Ok(fields) => {
+                            ToolResult::ok(bylazora::copybook::field_schema(&fields).to_string())
+                        }
                         Err(e) => ToolResult::err(format!("ERROR: {e}")),
                     },
                     Err(e) => ToolResult::err(format!("ERROR: cannot read {path}: {e}")),
                 },
                 None => ToolResult::err("error: src required"),
+            }
+        }
+        "migrate_verify" => {
+            let job = args.get("job_dir").and_then(|v| v.as_str());
+            match job {
+                Some(dir) => match bylazora::migrate::cmd_verify(&PathBuf::from(dir)) {
+                    Ok(()) => ToolResult::ok("IDENTICAL"),
+                    Err(e) => ToolResult::err(e),
+                },
+                None => ToolResult::err("error: job_dir required"),
+            }
+        }
+        "migrate_status" => {
+            let job = args.get("job_dir").and_then(|v| v.as_str());
+            match job {
+                Some(dir) => match bylazora::migrate::cmd_status(&PathBuf::from(dir)) {
+                    Ok(s) => ToolResult::ok(&s),
+                    Err(e) => ToolResult::err(e),
+                },
+                None => ToolResult::err("error: job_dir required"),
             }
         }
         other => ToolResult::err(format!("error: unknown tool: {other}")),
@@ -101,7 +136,9 @@ const TOOLS: &str = r#"[
     { "name": "bench", "description": "Run a tier and write byte-exact outputs.",
       "inputSchema": { "type": "object", "properties": { "input_dir": { "type": "string" }, "output_dir": { "type": "string" }, "backend": { "type": "string", "enum": ["cpu", "gpu", "cuda"], "description": "cpu (default), gpu (vendor-neutral wgpu, any adapter), or cuda (NVIDIA; needs a build with --features cuda)" } }, "required": ["input_dir", "output_dir"] } },
     { "name": "copybook_parse", "description": "Parse a COBOL copybook into its field schema.",
-      "inputSchema": { "type": "object", "properties": { "src": { "type": "string" } }, "required": ["src"] } }
+      "inputSchema": { "type": "object", "properties": { "src": { "type": "string" } }, "required": ["src"] } },
+    { "name": "migrate_verify", "description": "Build, run and gate one migration workspace against its sealed reference. Returns the verdict record.", "inputSchema": { "type": "object", "properties": { "job_dir": { "type": "string" } }, "required": ["job_dir"] } },
+    { "name": "migrate_status", "description": "Report a migration workspace's contract and its latest verdict.", "inputSchema": { "type": "object", "properties": { "job_dir": { "type": "string" } }, "required": ["job_dir"] } }
 ]"#;
 
 /// Handle one JSON-RPC request. Returns None for a notification (a request
@@ -124,7 +161,9 @@ fn dispatch(req: &Value) -> Option<Value> {
             let result = handle_call(&req.get("params").cloned().unwrap_or(Value::Null));
             json!({ "jsonrpc": "2.0", "id": id, "result": result.into_json() })
         }
-        _ => json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32601, "message": "method not found" } }),
+        _ => {
+            json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32601, "message": "method not found" } })
+        }
     })
 }
 
@@ -133,8 +172,13 @@ pub fn run() -> Result<()> {
     let mut stdout = std::io::stdout();
     for line in stdin.lock().lines() {
         let line = line?;
-        if line.trim().is_empty() { continue; }
-        let req: Value = match serde_json::from_str(&line) { Ok(v) => v, Err(_) => continue };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let req: Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
         if let Some(response) = dispatch(&req) {
             writeln!(stdout, "{}", response)?;
             stdout.flush()?;
@@ -164,7 +208,10 @@ mod tests {
     fn initialize_reports_the_crate_version() {
         let req = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize" });
         let resp = dispatch(&req).unwrap();
-        assert_eq!(resp["result"]["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            resp["result"]["serverInfo"]["version"],
+            env!("CARGO_PKG_VERSION")
+        );
     }
 
     #[test]
@@ -204,11 +251,32 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_is_valid_json_naming_all_three_tools() {
+    fn tools_list_names_all_five_tools() {
         let req = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
         let resp = dispatch(&req).unwrap();
-        let names: Vec<&str> = resp["result"]["tools"].as_array().unwrap()
-            .iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert_eq!(names, ["validate", "bench", "copybook_parse"]);
+        let names: Vec<&str> = resp["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "validate",
+                "bench",
+                "copybook_parse",
+                "migrate_verify",
+                "migrate_status"
+            ]
+        );
+    }
+
+    #[test]
+    fn migrate_status_on_a_missing_workspace_is_an_error_result() {
+        let params = json!({ "name": "migrate_status", "arguments": { "job_dir": "/tmp/definitely-not-a-job" } });
+        let result = handle_call(&params);
+        assert!(result.is_error, "{}", result.text);
+        assert!(result.text.contains("cannot read"), "{}", result.text);
     }
 }
