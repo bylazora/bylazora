@@ -49,6 +49,14 @@ Everything after that - how the agent works, which tools it calls, the licence
 boundary - is yours to fit to the estate. Keep the rule about run records: a
 performance number without a recorded run is not a number.
 
+## The migration loop
+
+The pack pairs with the migration routine: `bylazora-core migrate new`
+scaffolds a gated workspace, the agent writes the logic into
+`target/rust/src/main.rs`, and `bylazora-core migrate verify` is the only
+thing that can mark the job proven. The same loop runs over MCP
+(migrate_verify, migrate_status).
+
 ## Keeping it current
 
 The pack names the engine's CLI and MCP tools. If you pin a version, check that
