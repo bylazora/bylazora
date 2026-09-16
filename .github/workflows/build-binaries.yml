@@ -20,7 +20,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  VERSION: "0.5.0"
+  VERSION: "0.5.1"
 
 jobs:
   linux-x86_64:

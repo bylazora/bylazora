@@ -405,8 +405,16 @@ pub fn cmd_verify(job: &Path) -> Result<(), String> {
         return Err("target failed to build".into());
     }
     let out = target.join("output");
-    fs::remove_dir_all(&out).map_err(|e| e.to_string())?;
-    fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    // A fresh clone never contains this gitignored directory (only a freshly
+    // scaffolded workspace does, via output/.keep), and remove_dir_all
+    // reports ENOENT for a missing path rather than treating it as cleared.
+    match fs::remove_dir_all(&out) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("cannot clear {}: {e}", out.display())),
+    }
+    fs::create_dir_all(&out)
+        .map_err(|e| format!("cannot create {}: {e}", out.display()))?;
     let bin = target.join("target/release").join(&spec.name);
     let run = std::process::Command::new(&bin)
         .arg(job.join("input"))
@@ -435,7 +443,7 @@ pub fn cmd_verify(job: &Path) -> Result<(), String> {
         files_compared,
         diffs: diffs.clone(),
         reference_manifest: fs::read_to_string(job.join("reference/manifest.sha256"))
-            .map_err(|e| e.to_string())?
+            .map_err(|e| format!("cannot read the sealed manifest: {e}"))?
             .lines()
             .find(|l| l.ends_with(".overall"))
             .and_then(|l| l.split_whitespace().next())
@@ -457,7 +465,7 @@ pub fn cmd_verify(job: &Path) -> Result<(), String> {
         )),
         raw + "\n",
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format!("cannot append the verdict record: {e}"))?;
     if diffs.is_empty() {
         println!("IDENTICAL");
         Ok(())
@@ -742,6 +750,23 @@ fn main() {
         make_input(&job);
         make_reference(&job);
         make_golden_target(&job);
+        cmd_verify(&job).unwrap();
+        let verdict = last_verdict(&job).unwrap().unwrap();
+        assert_eq!(verdict.verdict, "IDENTICAL");
+    }
+
+    #[test]
+    fn verify_runs_when_the_target_output_dir_does_not_exist_yet() {
+        // A fresh clone never contains the gitignored output directory; only
+        // a freshly scaffolded workspace does. The gate must clear-and-create
+        // it, not fail on a missing directory (the 0.5.0 regression).
+        let d = temp("vfresh");
+        let job = new_workspace(&d);
+        make_input(&job);
+        make_reference(&job);
+        make_golden_target(&job);
+        fs::remove_dir_all(job.join("target/rust/output")).unwrap();
+        assert!(!job.join("target/rust/output").exists());
         cmd_verify(&job).unwrap();
         let verdict = last_verdict(&job).unwrap().unwrap();
         assert_eq!(verdict.verdict, "IDENTICAL");
