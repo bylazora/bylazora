@@ -9,6 +9,22 @@ whatever it drafts. The agent proposes; the gate disposes.
 `CLAUDE.md` is the canonical pack. Deliberately one file of plain markdown, not
 one file per tool.
 
+## Connecting your agent to the gate
+
+The npm package carries a thin CLI. With Node installed:
+
+```
+npx bylazora setup claude     # writes .mcp.json for Claude Code
+npx bylazora setup cursor     # writes .cursor/mcp.json
+npx bylazora setup generic    # prints the mcpServers JSON
+npm install -g bylazora       # then: bylazora mcp, bylazora verify, doctor
+```
+
+The generated config runs `node <cli.js> mcp`, which finds the engine
+binary (BYLAZORA_CORE, then PATH, then a built checkout of the repository)
+and serves the MCP tools. The CLI computes nothing itself: verdicts come
+only from the engine's validator.
+
 ## Installing it into your migration repository
 
 Every agent tool reads its instructions from a different path, and those paths
@@ -55,7 +71,9 @@ The pack pairs with the migration routine: `bylazora-core migrate new`
 scaffolds a gated workspace, the agent writes the logic into
 `target/rust/src/main.rs`, and `bylazora-core migrate verify` is the only
 thing that can mark the job proven. The same loop runs over MCP
-(migrate_verify, migrate_status).
+(migrate_verify, migrate_status). Inside a workspace, `bylazora verify`
+and `bylazora status` find the job themselves (the nearest SPEC.json) and
+delegate to the engine.
 
 ## Keeping it current
 
