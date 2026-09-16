@@ -5,7 +5,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: install legacy compiler
-        run: sudo apt-get update && sudo apt-get install -y gnucobol
-      - name: run the migration and the gate
-        run: bash sample/run_all.sh
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build the engine
+        run: cargo build --release
+        working-directory: engine
+      - name: re-derive the reference from the COBOL and confirm the seal
+        run: |
+          sudo apt-get update && sudo apt-get install -y gnucobol
+          BEFORE=$(python3 -c "import json;print(json.load(open('sample/SPEC.json'))['sealed_reference_sha256'])")
+          engine/target/release/bylazora-core migrate reference sample --force
+          AFTER=$(python3 -c "import json;print(json.load(open('sample/SPEC.json'))['sealed_reference_sha256'])")
+          echo "committed seal: $BEFORE"
+          echo "re-derived seal: $AFTER"
+          test "$BEFORE" = "$AFTER"
+      - name: run the migrated target against the sealed reference
+        run: engine/target/release/bylazora-core migrate verify sample

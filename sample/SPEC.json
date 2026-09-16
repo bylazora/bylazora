@@ -1,0 +1,107 @@
+{
+  "name": "batch-txn",
+  "language": "rust",
+  "inputs": [
+    {
+      "path": "transactions.csv",
+      "format": "csv"
+    },
+    {
+      "path": "balances.csv",
+      "format": "csv"
+    }
+  ],
+  "outputs": [
+    "final_balances.csv",
+    "summary_report.csv"
+  ],
+  "schema": [
+    {
+      "children": [
+        {
+          "children": [],
+          "fixed_point": false,
+          "kind": "display",
+          "length": 7,
+          "level": 5,
+          "name": "TXN-ACCOUNT",
+          "occurs": 1,
+          "offset": 0,
+          "scale": 0,
+          "signed": false
+        },
+        {
+          "children": [],
+          "fixed_point": false,
+          "kind": "display",
+          "length": 7,
+          "level": 5,
+          "name": "TXN-AMOUNT",
+          "occurs": 1,
+          "offset": 7,
+          "scale": 0,
+          "signed": false
+        },
+        {
+          "children": [],
+          "fixed_point": false,
+          "kind": "display",
+          "length": 1,
+          "level": 5,
+          "name": "TXN-TYPE",
+          "occurs": 1,
+          "offset": 14,
+          "scale": 0,
+          "signed": false
+        }
+      ],
+      "fixed_point": false,
+      "kind": "group",
+      "length": 15,
+      "level": 1,
+      "name": "TXN-REC",
+      "occurs": 1,
+      "offset": 0,
+      "scale": 0,
+      "signed": false
+    },
+    {
+      "children": [
+        {
+          "children": [],
+          "fixed_point": false,
+          "kind": "display",
+          "length": 7,
+          "level": 5,
+          "name": "BAL-ACCOUNT",
+          "occurs": 1,
+          "offset": 0,
+          "scale": 0,
+          "signed": false
+        },
+        {
+          "children": [],
+          "fixed_point": false,
+          "kind": "display",
+          "length": 12,
+          "level": 5,
+          "name": "BAL-AMOUNT",
+          "occurs": 1,
+          "offset": 7,
+          "scale": 0,
+          "signed": true
+        }
+      ],
+      "fixed_point": false,
+      "kind": "group",
+      "length": 19,
+      "level": 1,
+      "name": "BAL-REC",
+      "occurs": 1,
+      "offset": 15,
+      "scale": 0,
+      "signed": false
+    }
+  ],
+  "sealed_reference_sha256": "1d2a70cf0770cff8e49e9a3b363bd640e8239a9b36be9d70a9a894c159df1ffd"
+}

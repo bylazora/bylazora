@@ -1,47 +1,72 @@
-# Bylazora: a sample mainframe migration, with proof
+# A sample mainframe migration, with a sealed reference and a byte-exact gate
 
-A complete, runnable example of a COBOL batch application migrated to the
-Bylazora engine. This repository is the public proof artifact: clone it,
-run one script, and watch the byte-exact gate certify the migration.
+A complete, runnable example of one COBOL batch job migrated into a
+`bylazora-core migrate` workspace. The legacy program's output is sealed as
+the reference, the migrated application in Rust must reproduce it byte for
+byte, and the gate refuses anything else. The dataset is synthetic; this
+sample demonstrates the routine, not a production estate.
 
-## What is inside
+## The shape
 
-- **legacy/** - the COBOL batch application (BATCHTXN.cob, its copybook, its
-  build script) plus a small fixed-seed dataset (100,000 transactions).
-- **engine/** - the migrated application: the Bylazora engine as a
-  prebuilt Linux x86_64 binary (CPU tier and vendor-neutral wgpu GPU tier).
-  Source available under licence - see engine/NOTICE.md.
-- **results/** - the COBOL reference outputs and the migrated outputs, after
-  a run.
-- **run_all.sh** - the whole pipeline: compile and run the legacy reference,
-  run the migrated tiers, then hold every output to the byte-exact gate.
-- **.github/workflows/ci.yml** - the gate as a regression test: every push
-  re-runs the migration and fails on a single differing byte.
+- `SPEC.json`: the job contract. Name, declared inputs and outputs, the
+  copybook schema, and the sealed reference hash.
+- `legacy/`: the legacy side: BATCHTXN.cob, its copybook, its build
+  script, and the fixed-seed dataset (100,000 transactions, 10,000
+  accounts).
+- `input/`: the declared inputs, ready for the migrated application.
+- `reference/`: capture.sh, which compiles and runs the legacy COBOL with
+  GnuCOBOL, and the sealed output/ with its manifest. This is the contract.
+- `target/rust/`: the migrated application, written into the skeleton
+  that `migrate new` generated.
+- `runs/`: the append-only verdict trail from `migrate verify`.
+- `verify.sh`: one command that runs the whole gate.
 
-## Run it
+## Run the gate
+
+From the repository root:
 
 ```
-sudo apt-get install -y gnucobol   # the legacy compiler
-bash run_all.sh
+cargo build --release --manifest-path engine/Cargo.toml
+engine/target/release/bylazora-core migrate verify sample
 ```
 
-Expected output: each tier prints timing, then the gate prints IDENTICAL for
-the CPU tier, the GPU tier (where a GPU or software Vulkan is available),
-and the CUDA tier (where an NVIDIA GPU and driver are available).
+Expected output: the target builds, runs on input/, the validator compares
+its output against the sealed reference, and the gate prints IDENTICAL.
+The verdict is appended to sample/runs/.
 
-## Why this is the whole argument
+To see the contract and the latest verdict:
 
-Mainframe migrations fail because they are validated by inspection. This
-repository demonstrates the alternative: the migrated application must
-reproduce the legacy output byte for byte, and one differing byte fails the
-gate. The same gate runs in CI here and in production engagements - this
-sample is a regression test for the capability, not a marketing mock.
+```
+engine/target/release/bylazora-core migrate status sample
+```
 
-Scaling: the dataset is small so the example runs anywhere. The same engine
-is measured byte-exact at one billion rows (see the evidence annex at
-bylazora.com/evidence.html).
+## Re-seal the reference
 
-Licence: see LICENSE.md. The Developer tier is free: clone it, run the
-pipeline, and let your agents draft against the gate, for jobs up to 10
-million rows each. Buy a Pro key when a workload goes to production or
-exceeds the free cap; Enterprise terms cover engagements and integrators.
+The sealed bytes are committed, so the gate runs without GnuCOBOL. To
+re-derive them from the COBOL source (the repository's CI does this on
+every push and asserts the re-derived hash matches the committed seal):
+
+```
+sudo apt-get install -y gnucobol
+engine/target/release/bylazora-core migrate reference sample --force
+```
+
+## The loop for a coding agent
+
+1. Read SPEC.json, then reference/output/ to see the exact bytes to
+   reproduce.
+2. Change target/rust/src/main.rs.
+3. Run `engine/target/release/bylazora-core migrate verify sample`.
+4. Read the diff; a MISMATCH is a diff to fix, never a threshold to tune.
+5. Repeat until the gate reports IDENTICAL.
+
+## Limits, stated plainly
+
+The data is synthetic and small (100,000 rows) so the example runs
+anywhere. This sample proves the routine: seal, migrate, gate. It does not
+prove the engine's throughput; the billion-row measurements live in the
+evidence annex at bylazora.com/evidence.html.
+
+Licence: this sample lives in the bylazora repository, AGPL-3.0-or-later
+for the engine and its workspace, Apache-2.0 for the parsers. See the
+repository root for the full texts.

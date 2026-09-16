@@ -1,0 +1,12 @@
+{
+  "attempt": 1,
+  "timestamp": "1789557859",
+  "verdict": "IDENTICAL",
+  "files_compared": [
+    "final_balances.csv",
+    "summary_report.csv"
+  ],
+  "diffs": [],
+  "reference_manifest": "1d2a70cf0770cff8e49e9a3b363bd640e8239a9b36be9d70a9a894c159df1ffd",
+  "target_output_sha256": "1d2a70cf0770cff8e49e9a3b363bd640e8239a9b36be9d70a9a894c159df1ffd"
+}
